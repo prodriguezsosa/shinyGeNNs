@@ -1,11 +1,16 @@
+library(dplyr)
 library(magrittr)
-library(xlsx)
+library(readxl)
 library(tidyverse)
 library(data.table)
+library(pbapply)
+
+## set working directory to the location of the master "word_embeddings" folder
+setwd("/Volumes/Potosi/Research/EmbeddingsProject/dataverse/word_embeddings/")
 
 # upload mturk hits
-in_path <- "/Users/pedrorodriguez/Drobox/GitHub/Semantica/Semantic-Search/data/RShiny/Context/Raw/"
-out_path <- "/Volumes/Potosi/Research/EmbeddingsProject/CR/Human-Validation/"
+in_path <- "./data/mturk/semantic_fluency_task/output/"
+out_path <- "./data/mturk/semantic_fluency_task/processed/"
 
 # define pre-processing options (in addition to lower-casing and removing punctuation)
 PLURALS <- FALSE
@@ -24,15 +29,15 @@ cleanHIT <- function(hit_file){
   hit <- read.table(paste0(in_path, hit_file), sep = ",", header = TRUE)  # load hit
   cues <- as.character(unique(hit$cue))
   if(length(cues) == 11){
-  workerid <- as.character(unique(hit$workerid))
-  # fluency data
-  fluency <- t(hit[hit$variable == "Fluency", -c(1,3)]) # keep fluency rows and cue
-  fluency[trimws(fluency) == ""] <- NA  # NA empty entries
-  fluency <- data.table(fluency) %>% set_colnames(cues)
-  fluency <- gather(fluency) %>% set_colnames(c("cue", "fluency"))
-  hit <- data.table(workerid, fluency)
-  hit <- hit[!is.na(hit$fluency),]
-  return(hit)}else{return(data.table(workerid = NA, cue = NA, fluency = NA))}
+    workerid <- as.character(unique(hit$workerid))
+    # fluency data
+    fluency <- t(hit[hit$variable == "Fluency", -c(1,3)]) # keep fluency rows and cue
+    fluency[trimws(fluency) == ""] <- NA  # NA empty entries
+    fluency <- data.table(fluency) %>% set_colnames(cues)
+    fluency <- gather(fluency) %>% set_colnames(c("cue", "fluency"))
+    hit <- data.table(workerid, fluency)
+    hit <- hit[!is.na(hit$fluency),]
+    return(hit)}else{return(data.table(workerid = NA, cue = NA, fluency = NA))}
 }
 
 # function to clean SURVEY FILES
@@ -42,16 +47,16 @@ cleanSURVEY <- function(hit_file){
 }
 
 # apply function and bind results
-hitsFluency <- lapply(fluency, function(x) cleanHIT(x)) %>% .[!is.na(.)] %>% do.call(rbind, .)
-hitsSurvey <- lapply(surveys, function(x) cleanSURVEY(x)) %>% do.call(rbind,.)
+hitsFluency <- pblapply(fluency, function(x) cleanHIT(x)) %>% .[!is.na(.)] %>% do.call(rbind, .)
+hitsSurvey <- pblapply(surveys, function(x) cleanSURVEY(x)) %>% do.call(rbind,.)
 
 # save results to excel to apply spell check
-#write.xlsx(hitsFluency, paste0(out_path,"hitsFluency.xlsx"), col.names = TRUE)
+#openxlsx::write.xlsx(hitsFluency, paste0(out_path,"hitsFluency.xlsx"), col.names = TRUE)
 
 # --------------------------
 # PRE-PROCESSING            ----
 # --------------------------
-#hitsFluency <- data.table(read.xlsx(paste0(out_path, "hitsFLUENCY_spellchecked.xlsx"), sheetName = "Sheet1"), stringsAsFactors = FALSE)
+hitsFluency <- data.table(read_excel(paste0(out_path, "hitsFLUENCY_spellchecked.xlsx"), sheet = "Sheet1"), stringsAsFactors = FALSE)
 names(hitsFluency)[names(hitsFluency) == 'workerid'] <- 'pid'
 names(hitsFluency)[names(hitsFluency) == 'workerid'] <- 'pid'
 hitsFluency$fluency <- tolower(hitsFluency$fluency)
@@ -131,8 +136,8 @@ tags <- tags[,c("pid", "tags")]
 
 # ss corpus
 sscorpus <- list("fluency" = fluency_list,
-                "tags" = tags,
-                "survey" = survey)
+                 "tags" = tags,
+                 "survey" = survey)
 
 # save data
 saveRDS(sscorpus, paste0(out_path, "sscorpus.rds"))
